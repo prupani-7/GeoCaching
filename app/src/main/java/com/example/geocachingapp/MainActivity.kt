@@ -14,6 +14,7 @@ import com.arcgismaps.ArcGISEnvironment
 import com.arcgismaps.Color
 import com.arcgismaps.data.Feature
 import com.arcgismaps.data.ServiceFeatureTable
+import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
 import com.arcgismaps.geometry.Point
 import com.arcgismaps.geometry.Polyline
@@ -65,6 +66,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var polyline: Polyline
 
+    private lateinit var features : List<Feature>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -115,7 +118,7 @@ class MainActivity : AppCompatActivity() {
                 onSingleTapConfirmed.collect { tapEvent ->
                     // get the tapped coordinate
                     screenCoordinate = tapEvent.screenCoordinate
-                    getSelectedFeatureLayer(screenCoordinate)
+                    var features = getSelectedFeatureLayer(screenCoordinate)
                     navigateButton.isEnabled = true
 
                     // get the current location of the user
@@ -123,9 +126,14 @@ class MainActivity : AppCompatActivity() {
                     if (currentPosition != null) {
                         // project the WGS84 point to Web mercator point
                         val webMercatorPoint =
-                            convertToWebMercator(currentPosition.x, currentPosition.y)
+                            GeometryEngine.projectOrNull(currentPosition, SpatialReference.webMercator())
+                        val featuremapLocation = features[0].geometry?.let { extractMapLocation(it) }
+                        if (featuremapLocation != null) {
+                            // Do something with the extracted map location
+                            println("Selected Feature Location - X: ${featuremapLocation.x}, Y: ${featuremapLocation.y}")
+                        }
                         // create a polyline connecting the 2 points above
-                        polyline = Polyline(listOf(webMercatorPoint!!, tapEvent.mapPoint!!))
+                        polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
                     }
                 }
             }
@@ -142,7 +150,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Displays the number of features selected on the given [screenCoordinate]
      */
-    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) {
+    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) : List<Feature> {
         // clear the previous selection
         featureLayer.clearSelection()
         // set a tolerance for accuracy of returned selections from point tapped
@@ -154,7 +162,7 @@ class MainActivity : AppCompatActivity() {
         identifyLayerResult.apply {
             onSuccess { identifyLayerResult ->
                 // get the elements in the selection that are features
-                val features = identifyLayerResult.geoElements.filterIsInstance<Feature>()
+                features = identifyLayerResult.geoElements.filterIsInstance<Feature>()
                 // add the features to the current feature layer selection
                 featureLayer.selectFeatures(features)
                 Snackbar.make(mapView, "${features.size} features selected", Snackbar.LENGTH_SHORT)
@@ -166,6 +174,7 @@ class MainActivity : AppCompatActivity() {
                 Snackbar.make(mapView, errorMessage, Snackbar.LENGTH_SHORT).show()
             }
         }
+        return features
     }
 
     /**
@@ -233,18 +242,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun convertToWebMercator(longitude: Double, latitude: Double): Point? {
-        // Create a WGS84 point using the GPS coordinates
-        val wgs84Point = Point(longitude, latitude, SpatialReference(4326))
-
-        // Create a Web Mercator spatial reference
-        val webMercatorSpatialReference = SpatialReference(3857)
-
-        // Project the WGS84 point to Web Mercator
-        val projectedPoint =
-            GeometryEngine.projectOrNull(wgs84Point, webMercatorSpatialReference) as Point
-
-        return projectedPoint
+    private fun extractMapLocation(geometry: Geometry): Point {
+        val mapViewSpatialReference = mapView.spatialReference.value
+        val featureGeometry = GeometryEngine.projectOrNull(geometry, mapViewSpatialReference!!) as Point
+        return featureGeometry
     }
+
 }
 
