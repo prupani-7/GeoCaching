@@ -116,42 +116,51 @@ class MainActivity : AppCompatActivity() {
             // give any item selected on the mapView a green selection halo
             selectionProperties.color = Color.green
 
-
             locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             // listen to the changes in the status of the location date source
+
             lifecycleScope.launch {
-                locationDisplay.dataSource.start()
-                    .onSuccess {
+                locationDisplay.dataSource.start().getOrElse {
+                    showError("Error starting LocationDataSource: ${it.message} ")
+                    // check permissions to see if failure may be due to lack of permissions
+                    requestPermissions()
+                }
+            }
 
-                        onSingleTapConfirmed.collect { tapEvent ->
-                            // get the tapped coordinate
-                            screenCoordinate = tapEvent.screenCoordinate
-                            var features = getSelectedFeatureLayer(screenCoordinate)
+            lifecycleScope.launch {
+                onSingleTapConfirmed.collect { tapEvent ->
+                    // get the tapped coordinate
+                    screenCoordinate = tapEvent.screenCoordinate
+                    getSelectedFeatureLayer(screenCoordinate)
 
-                            // get the current location of the user
-                            val currentPosition = locationDisplay.location.value?.position
-                            // project the WGS84 point to Web mercator point
-                            val webMercatorPoint =
-                                GeometryEngine.projectOrNull(
-                                    currentPosition!!,
-                                    SpatialReference.webMercator()
-                                )
-                            if (features.isNotEmpty()) {
-                                navigateButton.isEnabled = true
-                                val featuremapLocation = features[0].geometry?.let { extractMapLocation(it) }
-                                // create a polyline connecting the 2 points above
-                                polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
-                                distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(webMercatorPoint, featuremapLocation, null, null, GeodeticCurveType.NormalSection )!!
-                            }
-                            else {
-                                Snackbar.make(mapView, "No features in this area", Snackbar.LENGTH_SHORT).show()
-                                return@collect
-                            }
+                        // get the current location of the user
+                        val currentPosition = locationDisplay.location.value?.position
+                        // project the WGS84 point to Web mercator point
+                        val webMercatorPoint =
+                            GeometryEngine.projectOrNull(
+                                currentPosition!!,
+                                SpatialReference.webMercator()
+                            )
+
+                        if (features.isNotEmpty()) {
+                            navigateButton.isEnabled = true
+                            val featuremapLocation =
+                                features[0].geometry?.let { extractMapLocation(it) }
+                            // create a polyline connecting the 2 points above
+                            polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
+                            distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
+                                webMercatorPoint,
+                                featuremapLocation,
+                                null,
+                                null,
+                                GeodeticCurveType.NormalSection
+                            )!!
+                        } else {
+                            Snackbar.make(mapView, "No features in this area", Snackbar.LENGTH_SHORT)
+                                .show()
+                            return@collect
                         }
-                    }.onFailure {
-                        // check permissions to see if failure may be due to lack of permissions
-                        requestPermissions()
-                    }
+                }
             }
         }
 
@@ -172,6 +181,7 @@ class MainActivity : AppCompatActivity() {
         // navigate to the destination point
         clearButton.setOnClickListener {
             // disable button
+            navigateButton.isEnabled = false
             clearButton.isEnabled = false
             graphicsOverlay.graphics.clear()
             graphicsOverlay.clearSelection()
@@ -183,7 +193,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Displays the number of features selected on the given [screenCoordinate]
      */
-    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate): List<Feature> {
+    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) {
         // clear the previous selection
         featureLayer.clearSelection()
         // set a tolerance for accuracy of returned selections from point tapped
@@ -205,7 +215,6 @@ class MainActivity : AppCompatActivity() {
                 Snackbar.make(mapView, errorMessage, Snackbar.LENGTH_SHORT).show()
             }
         }
-        return features
     }
 
     private fun extractMapLocation(geometry: Geometry): Point {
@@ -272,6 +281,11 @@ class MainActivity : AppCompatActivity() {
                 Snackbar.LENGTH_LONG
             ).show()
         }
+    }
+
+    private fun showError(message: String) {
+        Log.e(localClassName, message)
+        Snackbar.make(mapView, message, Snackbar.LENGTH_SHORT).show()
     }
 }
 
