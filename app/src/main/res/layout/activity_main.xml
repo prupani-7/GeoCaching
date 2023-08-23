@@ -1,41 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <androidx.constraintlayout.widget.ConstraintLayout xmlns:tools="http://schemas.android.com/tools"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         tools:context=".MainActivity">
 
-        <com.arcgismaps.mapping.view.MapView
-            android:id="@+id/mapView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"/>
-        <Spinner
-            android:id="@+id/spinner"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentBottom="true"
-            android:layout_marginEnd="8dp"
-            android:gravity="end"
-            android:layout_marginBottom="8dp"
-            android:background="#00000000"
-            android:overlapAnchor="false"
-            android:popupBackground="#00000000"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/navigateButton"
             style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="100dp"
             android:enabled="false"
             android:text="Navigate"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintTop_toTopOf="parent"/>
+            app:layout_constraintBottom_toTopOf="@+id/mapView"
+            app:layout_constraintEnd_toStartOf="@+id/clear"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/clear"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:text="Clear"
+            app:layout_constraintBottom_toTopOf="@+id/mapView"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/navigateButton"
+            app:layout_constraintTop_toTopOf="parent" /> " />
+
+        <LinearLayout
+            android:id="@+id/linearLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            app:layout_constraintBottom_toTopOf="@+id/mapView"
+            app:layout_constraintEnd_toStartOf="@+id/clear"
+            app:layout_constraintStart_toEndOf="@id/navigateButton"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/distance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <com.arcgismaps.mapping.view.MapView
+            android:id="@+id/mapView"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/linearLayout">
+
+
+        </com.arcgismaps.mapping.view.MapView>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

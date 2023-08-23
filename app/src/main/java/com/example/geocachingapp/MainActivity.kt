@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -14,6 +15,8 @@ import com.arcgismaps.ArcGISEnvironment
 import com.arcgismaps.Color
 import com.arcgismaps.data.Feature
 import com.arcgismaps.data.ServiceFeatureTable
+import com.arcgismaps.geometry.GeodeticCurveType
+import com.arcgismaps.geometry.GeodeticDistanceResult
 import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
 import com.arcgismaps.geometry.Point
@@ -66,7 +69,21 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var polyline: Polyline
 
-    private lateinit var features : List<Feature>
+    private lateinit var features: List<Feature>
+
+    private lateinit var distanceGeodetic: GeodeticDistanceResult
+
+    private val distanceInMiles: TextView by lazy {
+        activityMainBinding.distance
+    }
+
+    private val navigateButton: TextView by lazy {
+        activityMainBinding.navigateButton
+    }
+
+    private val clearButton: TextView by lazy {
+        activityMainBinding.clear
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,12 +96,13 @@ class MainActivity : AppCompatActivity() {
         // features, such as LocationProvider and application resources
         ArcGISEnvironment.applicationContext = applicationContext
 
-        val navigateButton = activityMainBinding.navigateButton
-
         // add the feature layer to the maps operational layer
         val geocacheMap = ArcGISMap(BasemapStyle.ArcGISStreets).apply {
             operationalLayers.add(featureLayer)
         }
+
+        // create a location display object
+        var locationDisplay = mapView.locationDisplay
 
         // apply the map to the mapView
         mapView.apply {
@@ -98,59 +116,74 @@ class MainActivity : AppCompatActivity() {
             // give any item selected on the mapView a green selection halo
             selectionProperties.color = Color.green
 
-            // create a location display object
-            val locationDisplay = mapView.locationDisplay
+
+            locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             // listen to the changes in the status of the location date source
             lifecycleScope.launch {
                 locationDisplay.dataSource.start()
                     .onSuccess {
-                        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-                        // permission already granted, so start the location display
-                        activityMainBinding.spinner.setSelection(1, true)
+
+                        onSingleTapConfirmed.collect { tapEvent ->
+                            // get the tapped coordinate
+                            screenCoordinate = tapEvent.screenCoordinate
+                            var features = getSelectedFeatureLayer(screenCoordinate)
+
+                            // get the current location of the user
+                            val currentPosition = locationDisplay.location.value?.position
+                            // project the WGS84 point to Web mercator point
+                            val webMercatorPoint =
+                                GeometryEngine.projectOrNull(
+                                    currentPosition!!,
+                                    SpatialReference.webMercator()
+                                )
+                            if (features.isNotEmpty()) {
+                                navigateButton.isEnabled = true
+                                val featuremapLocation = features[0].geometry?.let { extractMapLocation(it) }
+                                // create a polyline connecting the 2 points above
+                                polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
+                                distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(webMercatorPoint, featuremapLocation, null, null, GeodeticCurveType.NormalSection )!!
+                            }
+                            else {
+                                Snackbar.make(mapView, "No features in this area", Snackbar.LENGTH_SHORT).show()
+                                return@collect
+                            }
+                        }
                     }.onFailure {
                         // check permissions to see if failure may be due to lack of permissions
                         requestPermissions()
                     }
             }
-
-            // set an on touch listener on the map view
-            lifecycleScope.launch {
-                onSingleTapConfirmed.collect { tapEvent ->
-                    // get the tapped coordinate
-                    screenCoordinate = tapEvent.screenCoordinate
-                    var features = getSelectedFeatureLayer(screenCoordinate)
-                    navigateButton.isEnabled = true
-
-                    // get the current location of the user
-                    val currentPosition = locationDisplay.location.value?.position
-                    if (currentPosition != null) {
-                        // project the WGS84 point to Web mercator point
-                        val webMercatorPoint =
-                            GeometryEngine.projectOrNull(currentPosition, SpatialReference.webMercator())
-                        val featuremapLocation = features[0].geometry?.let { extractMapLocation(it) }
-                        if (featuremapLocation != null) {
-                            // Do something with the extracted map location
-                            println("Selected Feature Location - X: ${featuremapLocation.x}, Y: ${featuremapLocation.y}")
-                        }
-                        // create a polyline connecting the 2 points above
-                        polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
-                    }
-                }
-            }
         }
+
         // navigate to the destination point
         navigateButton.setOnClickListener {
             // disable button
             navigateButton.isEnabled = false
+            clearButton.isEnabled = true
+            // display distance to the destination point
+            val distInMiles = distanceGeodetic.distance / 1609.344
+            val formattedDistance = String.format("%.2f", distInMiles)
+            distanceInMiles.text = "${formattedDistance} miles"
+
             // create a Graphic using the polyline geometry and the riverSymbol and add it to the GraphicsOverlay
             graphicsOverlay.graphics.add(Graphic(polyline, lineSymbol))
+        }
+
+        // navigate to the destination point
+        clearButton.setOnClickListener {
+            // disable button
+            clearButton.isEnabled = false
+            graphicsOverlay.graphics.clear()
+            graphicsOverlay.clearSelection()
+            featureLayer.clearSelection()
+            distanceInMiles.text = ""
         }
     }
 
     /**
      * Displays the number of features selected on the given [screenCoordinate]
      */
-    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) : List<Feature> {
+    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate): List<Feature> {
         // clear the previous selection
         featureLayer.clearSelection()
         // set a tolerance for accuracy of returned selections from point tapped
@@ -165,8 +198,6 @@ class MainActivity : AppCompatActivity() {
                 features = identifyLayerResult.geoElements.filterIsInstance<Feature>()
                 // add the features to the current feature layer selection
                 featureLayer.selectFeatures(features)
-                Snackbar.make(mapView, "${features.size} features selected", Snackbar.LENGTH_SHORT)
-                    .show()
             }
             onFailure {
                 val errorMessage = "Select feature failed: " + it.message
@@ -175,6 +206,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return features
+    }
+
+    private fun extractMapLocation(geometry: Geometry): Point {
+        val mapViewSpatialReference = mapView.spatialReference.value
+        val featureGeometry =
+            GeometryEngine.projectOrNull(geometry, mapViewSpatialReference!!) as Point
+        return featureGeometry
     }
 
     /**
@@ -209,9 +247,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             // permission already granted, so start the location display
             lifecycleScope.launch {
-                mapView.locationDisplay.dataSource.start().onSuccess {
-                    activityMainBinding.spinner.setSelection(1, true)
-                }
+                mapView.locationDisplay.dataSource.start()
             }
         }
     }
@@ -227,9 +263,7 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             lifecycleScope.launch {
-                mapView.locationDisplay.dataSource.start().onSuccess {
-                    activityMainBinding.spinner.setSelection(1, true)
-                }
+                mapView.locationDisplay.dataSource.start()
             }
         } else {
             Snackbar.make(
@@ -237,16 +271,7 @@ class MainActivity : AppCompatActivity() {
                 "Location permissions required to run this sample!",
                 Snackbar.LENGTH_LONG
             ).show()
-            // update UI to reflect that the location display did not actually start
-            activityMainBinding.spinner.setSelection(0, true)
         }
     }
-
-    private fun extractMapLocation(geometry: Geometry): Point {
-        val mapViewSpatialReference = mapView.spatialReference.value
-        val featureGeometry = GeometryEngine.projectOrNull(geometry, mapViewSpatialReference!!) as Point
-        return featureGeometry
-    }
-
 }
 
