@@ -32,6 +32,7 @@ import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.ScreenCoordinate
+import com.arcgismaps.utilitynetworks.UtilityNetworkAttribute
 import com.example.geocachingapp.databinding.ActivityMainBinding
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
@@ -58,8 +59,6 @@ class MainActivity : AppCompatActivity() {
     // create a feature layer from the service feature table
     private val featureLayer = FeatureLayer.createWithFeatureTable(serviceFeatureTable)
 
-    private lateinit var screenCoordinate: ScreenCoordinate
-
     // create the graphic overlays
     private val graphicsOverlay: GraphicsOverlay by lazy { GraphicsOverlay() }
 
@@ -68,8 +67,6 @@ class MainActivity : AppCompatActivity() {
         SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Color.cyan, 4f)
 
     private lateinit var polyline: Polyline
-
-    private lateinit var features: List<Feature>
 
     private lateinit var distanceGeodetic: GeodeticDistanceResult
 
@@ -84,6 +81,16 @@ class MainActivity : AppCompatActivity() {
     private val clearButton: TextView by lazy {
         activityMainBinding.clear
     }
+
+    private lateinit var currentPosition: Point
+
+    private var features: List<Feature>? = null
+
+//    private var screenCoordinate: ScreenCoordinate? = null
+
+    private lateinit var screenCoordinate: ScreenCoordinate
+
+    private var navigationClicked: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,9 +108,6 @@ class MainActivity : AppCompatActivity() {
             operationalLayers.add(featureLayer)
         }
 
-        // create a location display object
-        var locationDisplay = mapView.locationDisplay
-
         // apply the map to the mapView
         mapView.apply {
             // set the map to be displayed in the layout's map view
@@ -111,56 +115,73 @@ class MainActivity : AppCompatActivity() {
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
             // set an initial view point
-            setViewpoint(Viewpoint(34.06, -117.228, 5e5))
+            setViewpoint(Viewpoint(34.056, -117.194, 3000.0))
 
             // give any item selected on the mapView a green selection halo
             selectionProperties.color = Color.green
+        }
 
-            locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-            // listen to the changes in the status of the location date source
+        // create a location display object
+        var locationDisplay = mapView.locationDisplay
 
-            lifecycleScope.launch {
-                locationDisplay.dataSource.start().getOrElse {
-                    showError("Error starting LocationDataSource: ${it.message} ")
-                    // check permissions to see if failure may be due to lack of permissions
-                    requestPermissions()
+        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+
+        // Start the location data source
+        lifecycleScope.launch {
+            locationDisplay.dataSource.start().getOrElse {
+                showError("Error starting LocationDataSource: ${it.message} ")
+                // check permissions to see if failure may be due to lack of permissions
+                requestPermissions()
+            }
+        }
+
+        lifecycleScope.launch {
+            locationDisplay.dataSource.locationChanged.collect {
+                Log.i(
+                    TAG,
+                    "Location Changed received." + "x:" + it.position.x + " " + "y:" + it.position.y
+                )
+
+                // get the current location of the user
+                currentPosition = it.position
+
+                // project the WGS84 point to Web mercator point
+                val webMercatorPoint =
+                    GeometryEngine.projectOrNull(
+                        currentPosition,
+                        SpatialReference.webMercator()
+                    )
+
+                if (features != null && clearButton.isEnabled) {
+                    val featuremapLocation =
+                        features!![0].geometry?.let { extractMapLocation(it) }
+
+                    // create a polyline connecting the 2 points above
+                    polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
+                    graphicsOverlay.graphics.clear()
+                    // create a Graphic using the polyline geometry and the riverSymbol and add it to the GraphicsOverlay
+                    graphicsOverlay.graphics.add(Graphic(polyline, lineSymbol))
+
+                    distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
+                        webMercatorPoint,
+                        featuremapLocation,
+                        null,
+                        null,
+                        GeodeticCurveType.NormalSection
+                    )!!
+
+                    // display distance to the destination point
+                    var distInMiles = distanceGeodetic.distance / 1609.344
+                    var formattedDistance = String.format("%.2f", distInMiles)
+                    distanceInMiles.text = "${formattedDistance} miles"
                 }
             }
+        }
 
-            lifecycleScope.launch {
-                onSingleTapConfirmed.collect { tapEvent ->
-                    // get the tapped coordinate
-                    screenCoordinate = tapEvent.screenCoordinate
-                    getSelectedFeatureLayer(screenCoordinate)
-
-                        // get the current location of the user
-                        val currentPosition = locationDisplay.location.value?.position
-                        // project the WGS84 point to Web mercator point
-                        val webMercatorPoint =
-                            GeometryEngine.projectOrNull(
-                                currentPosition!!,
-                                SpatialReference.webMercator()
-                            )
-
-                        if (features.isNotEmpty()) {
-                            navigateButton.isEnabled = true
-                            val featuremapLocation =
-                                features[0].geometry?.let { extractMapLocation(it) }
-                            // create a polyline connecting the 2 points above
-                            polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
-                            distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
-                                webMercatorPoint,
-                                featuremapLocation,
-                                null,
-                                null,
-                                GeodeticCurveType.NormalSection
-                            )!!
-                        } else {
-                            Snackbar.make(mapView, "No features in this area", Snackbar.LENGTH_SHORT)
-                                .show()
-                            return@collect
-                        }
-                }
+        lifecycleScope.launch {
+            mapView.onSingleTapConfirmed.collect { tapEvent ->
+                screenCoordinate = tapEvent.screenCoordinate
+                getSelectedFeatureLayer(screenCoordinate)
             }
         }
 
@@ -169,13 +190,6 @@ class MainActivity : AppCompatActivity() {
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
-            // display distance to the destination point
-            val distInMiles = distanceGeodetic.distance / 1609.344
-            val formattedDistance = String.format("%.2f", distInMiles)
-            distanceInMiles.text = "${formattedDistance} miles"
-
-            // create a Graphic using the polyline geometry and the riverSymbol and add it to the GraphicsOverlay
-            graphicsOverlay.graphics.add(Graphic(polyline, lineSymbol))
         }
 
         // navigate to the destination point
@@ -194,6 +208,8 @@ class MainActivity : AppCompatActivity() {
      * Displays the number of features selected on the given [screenCoordinate]
      */
     private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) {
+
+        navigateButton.isEnabled = true
         // clear the previous selection
         featureLayer.clearSelection()
         // set a tolerance for accuracy of returned selections from point tapped
@@ -207,7 +223,7 @@ class MainActivity : AppCompatActivity() {
                 // get the elements in the selection that are features
                 features = identifyLayerResult.geoElements.filterIsInstance<Feature>()
                 // add the features to the current feature layer selection
-                featureLayer.selectFeatures(features)
+                featureLayer.selectFeatures(features!!)
             }
             onFailure {
                 val errorMessage = "Select feature failed: " + it.message
