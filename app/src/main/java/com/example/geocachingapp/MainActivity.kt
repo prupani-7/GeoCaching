@@ -2,6 +2,7 @@ package com.example.geocachingapp
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
@@ -27,6 +28,7 @@ import com.arcgismaps.mapping.ArcGISMap
 import com.arcgismaps.mapping.BasemapStyle
 import com.arcgismaps.mapping.Viewpoint
 import com.arcgismaps.mapping.layers.FeatureLayer
+import com.arcgismaps.mapping.symbology.PictureMarkerSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
 import com.arcgismaps.mapping.view.Graphic
@@ -34,7 +36,9 @@ import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.ScreenCoordinate
 import com.arcgismaps.utilitynetworks.UtilityNetworkAttribute
 import com.example.geocachingapp.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -71,7 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var distanceGeodetic: GeodeticDistanceResult
 
     private val distanceInMiles: TextView by lazy {
-        activityMainBinding.distance
+        activityMainBinding.distanceTV
     }
 
     private val navigateButton: TextView by lazy {
@@ -79,7 +83,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val clearButton: TextView by lazy {
-        activityMainBinding.clear
+        activityMainBinding.clearButton
     }
 
     private lateinit var currentPosition: Point
@@ -91,6 +95,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenCoordinate: ScreenCoordinate
 
     private var navigationClicked: Boolean = false
+
+    // set the pin graphic for tapped location
+    private val pinSymbol by lazy {
+        createPinSymbol()
+    }
+
+    private val recenterButton: MaterialButton by lazy {
+        activityMainBinding.recenterButton
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -139,7 +152,7 @@ class MainActivity : AppCompatActivity() {
             locationDisplay.dataSource.locationChanged.collect {
                 Log.i(
                     TAG,
-                    "Location Changed received." + "x:" + it.position.x + " " + "y:" + it.position.y
+                    "Location Changed received." + locationDisplay.defaultSymbol.toJson()
                 )
 
                 // get the current location of the user
@@ -190,6 +203,7 @@ class MainActivity : AppCompatActivity() {
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
+            locationDisplay.defaultSymbol = pinSymbol
         }
 
         // navigate to the destination point
@@ -201,6 +215,19 @@ class MainActivity : AppCompatActivity() {
             graphicsOverlay.clearSelection()
             featureLayer.clearSelection()
             distanceInMiles.text = ""
+        }
+
+        // wire up recenter button
+        recenterButton.setOnClickListener {
+            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+            recenterButton.isEnabled = false
+        }
+
+        // listen if user navigates the map view away from the
+        // location display, activate the recenter button
+        lifecycleScope.launch {
+            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
+                .collect { recenterButton.isEnabled = true }
         }
     }
 
@@ -302,6 +329,27 @@ class MainActivity : AppCompatActivity() {
     private fun showError(message: String) {
         Log.e(localClassName, message)
         Snackbar.make(mapView, message, Snackbar.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Create a picture marker symbol to represent a pin at the tapped location
+     */
+    private fun createPinSymbol(): PictureMarkerSymbol {
+        // get pin drawable
+        val pinDrawable = ContextCompat.getDrawable(
+            this,
+            R.drawable.locationdisplaynavigationicon
+        )
+        //add a graphic for the tapped point
+        val pinSymbol = PictureMarkerSymbol.createWithImage(
+            pinDrawable as BitmapDrawable
+        )
+        pinSymbol.apply {
+            // resize the dimensions of the symbol
+            width = 20f
+            height = 20f
+        }
+        return pinSymbol
     }
 }
 
