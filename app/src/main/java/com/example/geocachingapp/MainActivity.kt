@@ -34,7 +34,6 @@ import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.ScreenCoordinate
-import com.arcgismaps.utilitynetworks.UtilityNetworkAttribute
 import com.example.geocachingapp.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
@@ -96,14 +95,21 @@ class MainActivity : AppCompatActivity() {
 
     private var navigationClicked: Boolean = false
 
-    // set the pin graphic for tapped location
-    private val pinSymbol by lazy {
-        createPinSymbol()
+    // set the arrow graphic for tapped location
+    private val arrowSymbol by lazy {
+        createArrowSymbol()
+    }
+
+    // set the default graphic for tapped location
+    private val defaultSymbol by lazy {
+        createDefaultSymbol()
     }
 
     private val recenterButton: MaterialButton by lazy {
         activityMainBinding.recenterButton
     }
+
+    private lateinit var textView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -150,10 +156,6 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             locationDisplay.dataSource.locationChanged.collect {
-                Log.i(
-                    TAG,
-                    "Location Changed received." + locationDisplay.defaultSymbol.toJson()
-                )
 
                 // get the current location of the user
                 currentPosition = it.position
@@ -194,7 +196,15 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             mapView.onSingleTapConfirmed.collect { tapEvent ->
                 screenCoordinate = tapEvent.screenCoordinate
-                getSelectedFeatureLayer(screenCoordinate)
+                getSelectedFeatureLayer(screenCoordinate)?.forEach { feature ->
+                    // create a textview for the callout
+                    textView = TextView(applicationContext).apply {
+                        text = "Native Tree name: " + feature.attributes["Name"].toString()
+                    }
+
+                    // display the callout in the map view
+                    mapView.callout.show(textView, feature, tapEvent.mapPoint)
+                }
             }
         }
 
@@ -203,7 +213,7 @@ class MainActivity : AppCompatActivity() {
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
-            locationDisplay.defaultSymbol = pinSymbol
+            locationDisplay.defaultSymbol = arrowSymbol
         }
 
         // navigate to the destination point
@@ -215,6 +225,7 @@ class MainActivity : AppCompatActivity() {
             graphicsOverlay.clearSelection()
             featureLayer.clearSelection()
             distanceInMiles.text = ""
+            locationDisplay.defaultSymbol = defaultSymbol
         }
 
         // wire up recenter button
@@ -234,7 +245,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Displays the number of features selected on the given [screenCoordinate]
      */
-    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) {
+    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) : List<Feature>? {
 
         navigateButton.isEnabled = true
         // clear the previous selection
@@ -258,6 +269,7 @@ class MainActivity : AppCompatActivity() {
                 Snackbar.make(mapView, errorMessage, Snackbar.LENGTH_SHORT).show()
             }
         }
+        return features
     }
 
     private fun extractMapLocation(geometry: Geometry): Point {
@@ -334,22 +346,43 @@ class MainActivity : AppCompatActivity() {
     /**
      * Create a picture marker symbol to represent a pin at the tapped location
      */
-    private fun createPinSymbol(): PictureMarkerSymbol {
+    private fun createArrowSymbol(): PictureMarkerSymbol {
         // get pin drawable
-        val pinDrawable = ContextCompat.getDrawable(
+        val arrowDrawable = ContextCompat.getDrawable(
             this,
             R.drawable.locationdisplaynavigationicon
         )
         //add a graphic for the tapped point
-        val pinSymbol = PictureMarkerSymbol.createWithImage(
-            pinDrawable as BitmapDrawable
+        val arrowSymbol = PictureMarkerSymbol.createWithImage(
+            arrowDrawable as BitmapDrawable
         )
-        pinSymbol.apply {
+        arrowSymbol.apply {
             // resize the dimensions of the symbol
             width = 20f
             height = 20f
         }
-        return pinSymbol
+        return arrowSymbol
+    }
+
+    /**
+     * Create a picture marker symbol to represent a pin at the tapped location
+     */
+    private fun createDefaultSymbol(): PictureMarkerSymbol {
+        // get pin drawable
+        val defaultDrawable = ContextCompat.getDrawable(
+            this,
+            R.drawable.locationdisplaydefaulticon
+        )
+        //add a graphic for the tapped point
+        val defaultSymbol = PictureMarkerSymbol.createWithImage(
+            defaultDrawable as BitmapDrawable
+        )
+        defaultSymbol.apply {
+            // resize the dimensions of the symbol
+            width = 20f
+            height = 20f
+        }
+        return defaultSymbol
     }
 }
 
