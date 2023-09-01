@@ -42,8 +42,6 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = MainActivity::class.java.simpleName
-
     // set up data binding for the activity
     private val activityMainBinding: ActivityMainBinding by lazy {
         DataBindingUtil.setContentView(this, R.layout.activity_main)
@@ -89,11 +87,7 @@ class MainActivity : AppCompatActivity() {
 
     private var features: List<Feature>? = null
 
-//    private var screenCoordinate: ScreenCoordinate? = null
-
     private lateinit var screenCoordinate: ScreenCoordinate
-
-    private var navigationClicked: Boolean = false
 
     // set the arrow graphic for tapped location
     private val arrowSymbol by lazy {
@@ -245,7 +239,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Displays the number of features selected on the given [screenCoordinate]
      */
-    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate) : List<Feature>? {
+    private suspend fun getSelectedFeatureLayer(screenCoordinate: ScreenCoordinate): List<Feature>? {
 
         navigateButton.isEnabled = true
         // clear the previous selection
