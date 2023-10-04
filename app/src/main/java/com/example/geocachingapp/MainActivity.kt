@@ -16,10 +16,13 @@ import com.arcgismaps.ArcGISEnvironment
 import com.arcgismaps.Color
 import com.arcgismaps.data.Feature
 import com.arcgismaps.data.ServiceFeatureTable
+import com.arcgismaps.geometry.Envelope
 import com.arcgismaps.geometry.GeodeticCurveType
 import com.arcgismaps.geometry.GeodeticDistanceResult
 import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
+import com.arcgismaps.geometry.LinearUnit
+import com.arcgismaps.geometry.LinearUnitId
 import com.arcgismaps.geometry.Point
 import com.arcgismaps.geometry.Polyline
 import com.arcgismaps.geometry.SpatialReference
@@ -27,10 +30,18 @@ import com.arcgismaps.location.LocationDisplayAutoPanMode
 import com.arcgismaps.mapping.ArcGISMap
 import com.arcgismaps.mapping.BasemapStyle
 import com.arcgismaps.mapping.Viewpoint
+import com.arcgismaps.mapping.labeling.LabelStackAlignment
 import com.arcgismaps.mapping.layers.FeatureLayer
+import com.arcgismaps.mapping.symbology.FontWeight
+import com.arcgismaps.mapping.symbology.HorizontalAlignment
+import com.arcgismaps.mapping.symbology.MarkerSymbol
 import com.arcgismaps.mapping.symbology.PictureMarkerSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbol
+import com.arcgismaps.mapping.symbology.SimpleLineSymbolMarkerStyle
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
+import com.arcgismaps.mapping.symbology.SimpleMarkerSymbolStyle
+import com.arcgismaps.mapping.symbology.TextSymbol
+import com.arcgismaps.mapping.symbology.VerticalAlignment
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.ScreenCoordinate
@@ -39,6 +50,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -65,15 +77,15 @@ class MainActivity : AppCompatActivity() {
 
     // define a line symbol which will represent the river stream with its width defined.
     private val lineSymbol =
-        SimpleLineSymbol(SimpleLineSymbolStyle.Solid, Color.cyan, 4f)
+        SimpleLineSymbol(SimpleLineSymbolStyle.Dash, Color.fromRgba(23, 105, 187), 3f)
 
     private lateinit var polyline: Polyline
 
     private lateinit var distanceGeodetic: GeodeticDistanceResult
 
-    private val distanceInMiles: TextView by lazy {
-        activityMainBinding.distanceTV
-    }
+//    private val distanceInMiles: TextView by lazy {
+//        activityMainBinding.distanceTV
+//    }
 
     private val navigateButton: TextView by lazy {
         activityMainBinding.navigateButton
@@ -105,6 +117,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var textView: TextView
 
+    private val distanceTV by lazy {
+        activityMainBinding.textView
+    }
+
+    private var textSymbol = TextSymbol()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -121,6 +139,8 @@ class MainActivity : AppCompatActivity() {
             operationalLayers.add(featureLayer)
         }
 
+        lineSymbol.markerStyle = SimpleLineSymbolMarkerStyle.Arrow  // ****** This is the arrow bit!  ******
+
         // apply the map to the mapView
         mapView.apply {
             // set the map to be displayed in the layout's map view
@@ -128,7 +148,7 @@ class MainActivity : AppCompatActivity() {
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
             // set an initial view point
-            setViewpoint(Viewpoint(34.056, -117.194, 3000.0))
+            setViewpoint(Viewpoint(34.056, -117.194, 1800.0))
 
             // give any item selected on the mapView a green selection halo
             selectionProperties.color = Color.green
@@ -155,34 +175,50 @@ class MainActivity : AppCompatActivity() {
                 currentPosition = it.position
 
                 // project the WGS84 point to Web mercator point
-                val webMercatorPoint =
+                val currentPositionwgs84 =
                     GeometryEngine.projectOrNull(
                         currentPosition,
                         SpatialReference.webMercator()
                     )
 
                 if (features != null && clearButton.isEnabled) {
-                    val featuremapLocation =
+                    val featureLocation =
                         features!![0].geometry?.let { extractMapLocation(it) }
 
                     // create a polyline connecting the 2 points above
-                    polyline = Polyline(listOf(webMercatorPoint!!, featuremapLocation!!))
+                    polyline = Polyline(listOf(currentPositionwgs84!!, featureLocation!!))
                     graphicsOverlay.graphics.clear()
-                    // create a Graphic using the polyline geometry and the riverSymbol and add it to the GraphicsOverlay
-                    graphicsOverlay.graphics.add(Graphic(polyline, lineSymbol))
 
                     distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
-                        webMercatorPoint,
-                        featuremapLocation,
+                        currentPositionwgs84,
+                        featureLocation,
+                        LinearUnit(LinearUnitId.Meters),
                         null,
-                        null,
-                        GeodeticCurveType.NormalSection
+                        GeodeticCurveType.Geodesic
                     )!!
 
                     // display distance to the destination point
-                    var distInMiles = distanceGeodetic.distance / 1609.344
-                    var formattedDistance = String.format("%.2f", distInMiles)
-                    distanceInMiles.text = "${formattedDistance} miles"
+                    var distance = distanceGeodetic.distance
+                    distanceTV.text = "Distance remaining: ${distance.toInt()} m"
+                    textSymbol.apply {
+                        color = Color.black
+                        text = " ${distance.toInt()} m"
+                        size = 14f
+                        fontWeight = FontWeight.Bold
+                        horizontalAlignment = HorizontalAlignment.Left
+                        verticalAlignment = VerticalAlignment.Bottom
+                    }
+                    val labelPoint = polyline.extent.center
+                    val labelGraphic = Graphic(labelPoint, textSymbol)
+                    // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
+                    graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
+
+                    val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 15.0)
+                    val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 15.0)
+
+                    val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
+                    val extent = unionGeometry?.extent
+                    mapView.setViewpoint(Viewpoint(extent!!))
                 }
             }
         }
@@ -207,7 +243,7 @@ class MainActivity : AppCompatActivity() {
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
-            locationDisplay.defaultSymbol = arrowSymbol
+//            locationDisplay.defaultSymbol = arrowSymbol
         }
 
         // navigate to the destination point
@@ -218,7 +254,8 @@ class MainActivity : AppCompatActivity() {
             graphicsOverlay.graphics.clear()
             graphicsOverlay.clearSelection()
             featureLayer.clearSelection()
-            distanceInMiles.text = ""
+            distanceTV.text = ""
+            textSymbol = TextSymbol()
             locationDisplay.defaultSymbol = defaultSymbol
         }
 
