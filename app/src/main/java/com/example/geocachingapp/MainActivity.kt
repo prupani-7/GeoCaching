@@ -148,7 +148,7 @@ class MainActivity : AppCompatActivity() {
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
             // set an initial view point
-            setViewpoint(Viewpoint(34.056, -117.194, 1800.0))
+            setViewpoint(Viewpoint(34.056, -117.194, 1500.0))
 
             // give any item selected on the mapView a green selection halo
             selectionProperties.color = Color.green
@@ -213,8 +213,8 @@ class MainActivity : AppCompatActivity() {
                     // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
                     graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
 
-                    val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 15.0)
-                    val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 15.0)
+                    val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 14.0)
+                    val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 14.0)
 
                     val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
                     val extent = unionGeometry?.extent
@@ -229,7 +229,7 @@ class MainActivity : AppCompatActivity() {
                 getSelectedFeatureLayer(screenCoordinate)?.forEach { feature ->
                     // create a textview for the callout
                     textView = TextView(applicationContext).apply {
-                        text = "Native Tree name: " + feature.attributes["Name"].toString()
+                        text = feature.attributes["Name"].toString() + " Tree"
                     }
 
                     // display the callout in the map view
