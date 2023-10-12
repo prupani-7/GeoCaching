@@ -188,7 +188,7 @@ class MainActivity : AppCompatActivity() {
 
         // Solution 2 - comment when trying Solution 1 below
         lifecycleScope.launch {
-            // when phone is rotates, we will set the auto pan mode to NAVIGATION
+            // when phone is rotates, headingChanged event will set the auto pan mode to NAVIGATION.
             locationDisplay.dataSource.headingChanged.collect {
                 locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             }
@@ -243,8 +243,8 @@ class MainActivity : AppCompatActivity() {
                     val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
                     val extent = unionGeometry?.extent
                     // This code was added to dynamically zoom in to the mapview as the user approaches the destination point. )
-                    mapView.setViewpoint(Viewpoint(extent!!)) // this will turn the auto pan mode OFF
-                    // Solution 2
+                    mapView.setViewpoint(Viewpoint(extent!!)) // Note: this line will turn the auto pan mode OFF
+                    // Solution 2 to pan the map when the device moves
                     // mapView.setViewpoint(Viewpoint(extent!!, it.course))
                 }
             }
