@@ -151,7 +151,7 @@ class MainActivity : AppCompatActivity() {
             // set an initial view point
             // Esri viewpoint
             // setViewpoint(Viewpoint(34.056, -117.194, 2000.0))
-            setViewpoint(Viewpoint(34.05356531530283, -117.22282391136133, 4000.0))
+            setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
         }
 
         // create a location display object
@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
                             featureLocation,
                             LinearUnit(LinearUnitId.Meters),
                             null,
-                            GeodeticCurveType.Geodesic
+                            GeodeticCurveType.NormalSection
                         )!!
 
                         // display distance to the destination point
@@ -232,14 +232,15 @@ class MainActivity : AppCompatActivity() {
                         val labelGraphic = Graphic(labelPoint, textSymbol)
                         // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
                         graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
-
                         val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 14.0)
                         val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 14.0)
 
                         val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
                         val extent = unionGeometry?.extent
-                        mapView.setViewpoint(Viewpoint(extent!!))
+                        mapView.setViewpoint(Viewpoint(extent!!, it.course))
+
                     }
+                    //locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
                 }
             }
         }
