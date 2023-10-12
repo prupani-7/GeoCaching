@@ -44,10 +44,12 @@ import com.arcgismaps.mapping.symbology.TextSymbol
 import com.arcgismaps.mapping.symbology.VerticalAlignment
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
+import com.arcgismaps.mapping.view.LocationDisplay
 import com.arcgismaps.mapping.view.ScreenCoordinate
 import com.example.geocachingapp.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
@@ -156,6 +158,7 @@ class MainActivity : AppCompatActivity() {
 
         // create a location display object
         var locationDisplay = mapView.locationDisplay
+        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
 
         // Start the location data source
         lifecycleScope.launch {
@@ -183,66 +186,76 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Solution 2 - comment when trying Solution 1 below
+        lifecycleScope.launch {
+            // when phone is rotates, we will set the auto pan mode to NAVIGATION
+            locationDisplay.dataSource.headingChanged.collect {
+                locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+            }
+        }
+
+        lifecycleScope.launch {
+            locationDisplay.dataSource.locationChanged.collect { it ->
+                locationDisplay.autoPanMode.value
+                // get the current location of the user
+                currentPosition = it.position
+
+                // project the WGS84 point to Web mercator point
+                val currentPositionwgs84 =
+                    GeometryEngine.projectOrNull(
+                        currentPosition,
+                        SpatialReference.webMercator()
+                    )
+
+                if (features != null && clearButton.isEnabled) {
+                    val featureLocation =
+                        features!![0].geometry?.let { extractMapLocation(it) }
+
+                    // create a polyline connecting the 2 points above
+                    polyline = Polyline(listOf(currentPositionwgs84!!, featureLocation!!))
+                    graphicsOverlay.graphics.clear()
+
+                    distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
+                        currentPositionwgs84,
+                        featureLocation,
+                        LinearUnit(LinearUnitId.Meters),
+                        null,
+                        GeodeticCurveType.NormalSection
+                    )!!
+
+                    // display distance to the destination point
+                    var distance = distanceGeodetic.distance
+                    distanceTV.text = "Distance to the Destination: ${distance.toInt()} m"
+                    textSymbol.apply {
+                        color = Color.black
+                        text = " ${distance.toInt()} m"
+                        size = 14f
+                        fontWeight = FontWeight.Bold
+                        horizontalAlignment = HorizontalAlignment.Left
+                        verticalAlignment = VerticalAlignment.Bottom
+                    }
+                    val labelPoint = polyline.extent.center
+                    val labelGraphic = Graphic(labelPoint, textSymbol)
+                    // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
+                    graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
+                    val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 10.0)
+                    val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 10.0)
+                    val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
+                    val extent = unionGeometry?.extent
+                    // This code was added to dynamically zoom in to the mapview as the user approaches the destination point. )
+                    mapView.setViewpoint(Viewpoint(extent!!)) // this will turn the auto pan mode OFF
+                    // Solution 2
+                    // mapView.setViewpoint(Viewpoint(extent!!, it.course))
+                }
+            }
+        }
+
         // navigate to the destination point
         navigateButton.setOnClickListener {
-            locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
-            lifecycleScope.launch {
-                locationDisplay.dataSource.locationChanged.collect { it ->
-                    // get the current location of the user
-                    currentPosition = it.position
 
-                    // project the WGS84 point to Web mercator point
-                    val currentPositionwgs84 =
-                        GeometryEngine.projectOrNull(
-                            currentPosition,
-                            SpatialReference.webMercator()
-                        )
-
-                    if (features != null && clearButton.isEnabled) {
-                        val featureLocation =
-                            features!![0].geometry?.let { extractMapLocation(it) }
-
-                        // create a polyline connecting the 2 points above
-                        polyline = Polyline(listOf(currentPositionwgs84!!, featureLocation!!))
-                        graphicsOverlay.graphics.clear()
-
-                        distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
-                            currentPositionwgs84,
-                            featureLocation,
-                            LinearUnit(LinearUnitId.Meters),
-                            null,
-                            GeodeticCurveType.NormalSection
-                        )!!
-
-                        // display distance to the destination point
-                        var distance = distanceGeodetic.distance
-                        distanceTV.text = "Distance to the Destination: ${distance.toInt()} m"
-                        textSymbol.apply {
-                            color = Color.black
-                            text = " ${distance.toInt()} m"
-                            size = 14f
-                            fontWeight = FontWeight.Bold
-                            horizontalAlignment = HorizontalAlignment.Left
-                            verticalAlignment = VerticalAlignment.Bottom
-                        }
-                        val labelPoint = polyline.extent.center
-                        val labelGraphic = Graphic(labelPoint, textSymbol)
-                        // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
-                        graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
-                        val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 14.0)
-                        val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 14.0)
-
-                        val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
-                        val extent = unionGeometry?.extent
-                        mapView.setViewpoint(Viewpoint(extent!!, it.course))
-
-                    }
-                    //locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-                }
-            }
         }
 
         // navigate to the destination point
