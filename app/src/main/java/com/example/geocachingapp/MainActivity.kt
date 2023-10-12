@@ -139,7 +139,8 @@ class MainActivity : AppCompatActivity() {
             operationalLayers.add(featureLayer)
         }
 
-        lineSymbol.markerStyle = SimpleLineSymbolMarkerStyle.Arrow  // ****** This is the arrow bit!  ******
+        // ****** This is the arrow symbol!  ******
+        lineSymbol.markerStyle = SimpleLineSymbolMarkerStyle.Arrow
 
         // apply the map to the mapView
         mapView.apply {
@@ -148,16 +149,13 @@ class MainActivity : AppCompatActivity() {
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
             // set an initial view point
-            setViewpoint(Viewpoint(34.056, -117.194, 1500.0))
-
-            // give any item selected on the mapView a green selection halo
-            selectionProperties.color = Color.green
+            // Esri viewpoint
+            // setViewpoint(Viewpoint(34.056, -117.194, 2000.0))
+            setViewpoint(Viewpoint(34.05356531530283, -117.22282391136133, 4000.0))
         }
 
         // create a location display object
         var locationDisplay = mapView.locationDisplay
-
-        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
 
         // Start the location data source
         lifecycleScope.launch {
@@ -169,61 +167,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            locationDisplay.dataSource.locationChanged.collect {
-
-                // get the current location of the user
-                currentPosition = it.position
-
-                // project the WGS84 point to Web mercator point
-                val currentPositionwgs84 =
-                    GeometryEngine.projectOrNull(
-                        currentPosition,
-                        SpatialReference.webMercator()
-                    )
-
-                if (features != null && clearButton.isEnabled) {
-                    val featureLocation =
-                        features!![0].geometry?.let { extractMapLocation(it) }
-
-                    // create a polyline connecting the 2 points above
-                    polyline = Polyline(listOf(currentPositionwgs84!!, featureLocation!!))
-                    graphicsOverlay.graphics.clear()
-
-                    distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
-                        currentPositionwgs84,
-                        featureLocation,
-                        LinearUnit(LinearUnitId.Meters),
-                        null,
-                        GeodeticCurveType.Geodesic
-                    )!!
-
-                    // display distance to the destination point
-                    var distance = distanceGeodetic.distance
-                    distanceTV.text = "Distance remaining: ${distance.toInt()} m"
-                    textSymbol.apply {
-                        color = Color.black
-                        text = " ${distance.toInt()} m"
-                        size = 14f
-                        fontWeight = FontWeight.Bold
-                        horizontalAlignment = HorizontalAlignment.Left
-                        verticalAlignment = VerticalAlignment.Bottom
-                    }
-                    val labelPoint = polyline.extent.center
-                    val labelGraphic = Graphic(labelPoint, textSymbol)
-                    // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
-                    graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
-
-                    val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 14.0)
-                    val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 14.0)
-
-                    val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
-                    val extent = unionGeometry?.extent
-                    mapView.setViewpoint(Viewpoint(extent!!))
-                }
-            }
-        }
-
-        lifecycleScope.launch {
             mapView.onSingleTapConfirmed.collect { tapEvent ->
                 screenCoordinate = tapEvent.screenCoordinate
                 getSelectedFeatureLayer(screenCoordinate)?.forEach { feature ->
@@ -231,6 +174,8 @@ class MainActivity : AppCompatActivity() {
                     textView = TextView(applicationContext).apply {
                         text = feature.attributes["Name"].toString() + " Tree"
                     }
+                    // give any item selected on the mapView a green selection halo
+                    mapView.selectionProperties.color = Color.green
 
                     // display the callout in the map view
                     mapView.callout.show(textView, feature, tapEvent.mapPoint)
@@ -240,10 +185,63 @@ class MainActivity : AppCompatActivity() {
 
         // navigate to the destination point
         navigateButton.setOnClickListener {
+            locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
-//            locationDisplay.defaultSymbol = arrowSymbol
+            lifecycleScope.launch {
+                locationDisplay.dataSource.locationChanged.collect { it ->
+                    // get the current location of the user
+                    currentPosition = it.position
+
+                    // project the WGS84 point to Web mercator point
+                    val currentPositionwgs84 =
+                        GeometryEngine.projectOrNull(
+                            currentPosition,
+                            SpatialReference.webMercator()
+                        )
+
+                    if (features != null && clearButton.isEnabled) {
+                        val featureLocation =
+                            features!![0].geometry?.let { extractMapLocation(it) }
+
+                        // create a polyline connecting the 2 points above
+                        polyline = Polyline(listOf(currentPositionwgs84!!, featureLocation!!))
+                        graphicsOverlay.graphics.clear()
+
+                        distanceGeodetic = GeometryEngine.distanceGeodeticOrNull(
+                            currentPositionwgs84,
+                            featureLocation,
+                            LinearUnit(LinearUnitId.Meters),
+                            null,
+                            GeodeticCurveType.Geodesic
+                        )!!
+
+                        // display distance to the destination point
+                        var distance = distanceGeodetic.distance
+                        distanceTV.text = "Distance to the Destination: ${distance.toInt()} m"
+                        textSymbol.apply {
+                            color = Color.black
+                            text = " ${distance.toInt()} m"
+                            size = 14f
+                            fontWeight = FontWeight.Bold
+                            horizontalAlignment = HorizontalAlignment.Left
+                            verticalAlignment = VerticalAlignment.Bottom
+                        }
+                        val labelPoint = polyline.extent.center
+                        val labelGraphic = Graphic(labelPoint, textSymbol)
+                        // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
+                        graphicsOverlay.graphics.addAll(listOf(Graphic(polyline, lineSymbol), labelGraphic))
+
+                        val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 14.0)
+                        val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 14.0)
+
+                        val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
+                        val extent = unionGeometry?.extent
+                        mapView.setViewpoint(Viewpoint(extent!!))
+                    }
+                }
+            }
         }
 
         // navigate to the destination point
