@@ -1,8 +1,13 @@
 package com.example.geocachingapp
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.BitmapDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
@@ -30,26 +35,21 @@ import com.arcgismaps.location.LocationDisplayAutoPanMode
 import com.arcgismaps.mapping.ArcGISMap
 import com.arcgismaps.mapping.BasemapStyle
 import com.arcgismaps.mapping.Viewpoint
-import com.arcgismaps.mapping.labeling.LabelStackAlignment
 import com.arcgismaps.mapping.layers.FeatureLayer
 import com.arcgismaps.mapping.symbology.FontWeight
 import com.arcgismaps.mapping.symbology.HorizontalAlignment
-import com.arcgismaps.mapping.symbology.MarkerSymbol
 import com.arcgismaps.mapping.symbology.PictureMarkerSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolMarkerStyle
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
-import com.arcgismaps.mapping.symbology.SimpleMarkerSymbolStyle
 import com.arcgismaps.mapping.symbology.TextSymbol
 import com.arcgismaps.mapping.symbology.VerticalAlignment
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
-import com.arcgismaps.mapping.view.LocationDisplay
 import com.arcgismaps.mapping.view.ScreenCoordinate
 import com.example.geocachingapp.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
@@ -84,10 +84,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var polyline: Polyline
 
     private lateinit var distanceGeodetic: GeodeticDistanceResult
-
-//    private val distanceInMiles: TextView by lazy {
-//        activityMainBinding.distanceTV
-//    }
 
     private val navigateButton: TextView by lazy {
         activityMainBinding.navigateButton
@@ -125,6 +121,8 @@ class MainActivity : AppCompatActivity() {
 
     private var textSymbol = TextSymbol()
 
+    var extent: Envelope? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -151,14 +149,12 @@ class MainActivity : AppCompatActivity() {
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
             // set an initial view point
-            // Esri viewpoint
-            // setViewpoint(Viewpoint(34.056, -117.194, 2000.0))
             setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
         }
 
         // create a location display object
         var locationDisplay = mapView.locationDisplay
-        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Off)
 
         // Start the location data source
         lifecycleScope.launch {
@@ -186,17 +182,46 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Solution 2 - comment when trying Solution 1 below
-        lifecycleScope.launch {
-            // when phone is rotates, headingChanged event will set the auto pan mode to NAVIGATION.
-            locationDisplay.dataSource.headingChanged.collect {
-                locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+        // Step 3: Register a SensorEventListener
+        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensorEventListener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                // Handle accuracy changes if needed
+            }
+
+            // Step 4: Handle compass updates
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event?.sensor?.type == Sensor.TYPE_ORIENTATION) {
+                    val azimuth = event.values[0]
+                    // Handle compass updates
+                    // Update map rotation or other components
+                    lifecycleScope.launch {
+                        mapView.setViewpointRotation( azimuth.toDouble() )
+//                        if (extent != null) {
+//                            mapView.setViewpoint(Viewpoint(extent!!, azimuth.toDouble()))
+//                        }
+                    }
+                }
             }
         }
 
+        sensorManager.registerListener(
+            sensorEventListener,
+            sensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+            SensorManager.SENSOR_DELAY_NORMAL
+        )
+
+
+////        // Solution 2 - comment when trying Solution 1 below
+//        lifecycleScope.launch {
+//            // when phone is rotates, headingChanged event will set the auto pan mode to NAVIGATION.
+//            locationDisplay.dataSource.headingChanged.collect {
+//                locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+//            }
+//        }
+
         lifecycleScope.launch {
             locationDisplay.dataSource.locationChanged.collect { it ->
-                locationDisplay.autoPanMode.value
                 // get the current location of the user
                 currentPosition = it.position
 
@@ -241,11 +266,13 @@ class MainActivity : AppCompatActivity() {
                     val currentPositionbuffer = GeometryEngine.bufferOrNull(currentPositionwgs84, 10.0)
                     val featureLocationbuffer = GeometryEngine.bufferOrNull(featureLocation, 10.0)
                     val unionGeometry = GeometryEngine.union(currentPositionbuffer!!, featureLocationbuffer!!)
-                    val extent = unionGeometry?.extent
+                    extent = unionGeometry?.extent!!
+
                     // This code was added to dynamically zoom in to the mapview as the user approaches the destination point. )
-                    mapView.setViewpoint(Viewpoint(extent!!)) // Note: this line will turn the auto pan mode OFF
-                    // Solution 2 to pan the map when the device moves
-                    // mapView.setViewpoint(Viewpoint(extent!!, it.course))
+//                     mapView.setViewpoint(Viewpoint(extent!!)) // Note: this line will turn the auto pan mode OFF
+
+                   // Solution 1 to pan the map when the device moves
+//                     mapView.setViewpoint(Viewpoint(extent!!, azimuth.toDouble()))
                 }
             }
         }
@@ -273,7 +300,7 @@ class MainActivity : AppCompatActivity() {
 
         // wire up recenter button
         recenterButton.setOnClickListener {
-            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+//            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
             recenterButton.isEnabled = false
         }
 
