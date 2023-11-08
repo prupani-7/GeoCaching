@@ -3,6 +3,7 @@ package com.example.geocachingapp
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.drawable.BitmapDrawable
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -20,10 +21,15 @@ import com.arcgismaps.ArcGISEnvironment
 import com.arcgismaps.Color
 import com.arcgismaps.data.Feature
 import com.arcgismaps.data.ServiceFeatureTable
+import com.arcgismaps.geometry.Envelope
+import com.arcgismaps.geometry.GeodeticCurveType
+import com.arcgismaps.geometry.GeodeticDistanceResult
 import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
+import com.arcgismaps.geometry.LinearUnit
+import com.arcgismaps.geometry.LinearUnitId
 import com.arcgismaps.geometry.Point
-import com.arcgismaps.geometry.PointCollection
+import com.arcgismaps.geometry.Polygon
 import com.arcgismaps.geometry.Polyline
 import com.arcgismaps.geometry.PolylineBuilder
 import com.arcgismaps.geometry.SpatialReference
@@ -32,12 +38,16 @@ import com.arcgismaps.mapping.ArcGISMap
 import com.arcgismaps.mapping.BasemapStyle
 import com.arcgismaps.mapping.Viewpoint
 import com.arcgismaps.mapping.layers.FeatureLayer
+import com.arcgismaps.mapping.symbology.FontWeight
+import com.arcgismaps.mapping.symbology.HorizontalAlignment
+import com.arcgismaps.mapping.symbology.PictureMarkerSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolMarkerStyle
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
+import com.arcgismaps.mapping.symbology.TextSymbol
+import com.arcgismaps.mapping.symbology.VerticalAlignment
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
-import com.arcgismaps.mapping.view.LocationDisplay
 import com.arcgismaps.mapping.view.ScreenCoordinate
 import com.example.geocachingapp.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
@@ -66,8 +76,6 @@ class MainActivity : AppCompatActivity() {
     // create a feature layer from the service feature table
     private val featureLayer = FeatureLayer.createWithFeatureTable(serviceFeatureTable)
 
-    private var features: List<Feature>? = null
-
     // create the graphic overlays
     private val graphicsOverlay: GraphicsOverlay by lazy { GraphicsOverlay() }
 
@@ -75,22 +83,30 @@ class MainActivity : AppCompatActivity() {
     private val lineSymbol =
         SimpleLineSymbol(SimpleLineSymbolStyle.Dash, Color.fromRgba(23, 105, 187), 3f)
 
-    private lateinit var polyline: Polyline
-
     private val navigateButton: TextView by lazy {
         activityMainBinding.navigateButton
+    }
+
+    private val clearButton: TextView by lazy {
+        activityMainBinding.clearButton
+    }
+
+    private val mapExtent: TextView by lazy {
+        activityMainBinding.mapExtentButton
+    }
+
+    private var features: List<Feature>? = null
+
+    private lateinit var screenCoordinate: ScreenCoordinate
+
+    // set the default graphic for tapped location
+    private val defaultSymbol by lazy {
+        createDefaultSymbol()
     }
 
     private val recenterButton: MaterialButton by lazy {
         activityMainBinding.recenterButton
     }
-    private val clearButton: TextView by lazy {
-        activityMainBinding.clearButton
-    }
-
-    private var gpsPoint: Point? = null
-
-    private lateinit var screenCoordinate: ScreenCoordinate
 
     private lateinit var textView: TextView
 
@@ -98,6 +114,9 @@ class MainActivity : AppCompatActivity() {
         activityMainBinding.textView
     }
 
+    private var gpsPoint: Point? = null
+
+    private var lineBuffer: Polygon? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,27 +129,26 @@ class MainActivity : AppCompatActivity() {
         // features, such as LocationProvider and application resources
         ArcGISEnvironment.applicationContext = applicationContext
 
-        // ****** This is the arrow symbol!  ******
-        lineSymbol.markerStyle = SimpleLineSymbolMarkerStyle.Arrow
-
         // add the feature layer to the maps operational layer
         val geocacheMap = ArcGISMap(BasemapStyle.ArcGISStreets).apply {
             operationalLayers.add(featureLayer)
         }
+
+        // ****** This is the arrow symbol!  ******
+        lineSymbol.markerStyle = SimpleLineSymbolMarkerStyle.Arrow
+
         // apply the map to the mapView
         mapView.apply {
             // set the map to be displayed in the layout's map view
             map = geocacheMap
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
-            // set an initial view point - Esri
-            setViewpoint(Viewpoint(34.0539543, 117.2233470, 2000.0)) // Esri 117.2233470°W 34.0539543°N
+            // set an initial view point
+            setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
         }
 
         // create a location display object
         var locationDisplay = mapView.locationDisplay
-        locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-
 
         // Start the location data source
         lifecycleScope.launch {
@@ -141,7 +159,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // when you select a point feature, it will show green halo and a callout Text with its description
         lifecycleScope.launch {
             mapView.onSingleTapConfirmed.collect { tapEvent ->
                 screenCoordinate = tapEvent.screenCoordinate
@@ -163,85 +180,81 @@ class MainActivity : AppCompatActivity() {
             locationDisplay.dataSource.locationChanged.collect { it ->
                 // get the current location of the user
                 gpsPoint = it.position
-            }
-        }
+                lifecycleScope.launch {
+                    // project the WGS84 point to Web mercator point
+                    if (gpsPoint != null) {
+                        val projectedGPSPoint =
+                            GeometryEngine.projectOrNull(gpsPoint!!, SpatialReference.webMercator())
 
-        // Register a SensorEventListener
-        val rotationMatrix = FloatArray(9)
-        val orientationAngles = FloatArray(3)
-        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val sensorEventListener = object : SensorEventListener {
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                // Not used
-            }
+                        if (features != null && clearButton.isEnabled) {
+                            graphicsOverlay.graphics.clear()
+                            val featurePoint =
+                                features!![0].geometry?.let { extractMapLocation(it) }
+                            val projectedFeaturePoint = GeometryEngine.projectOrNull(
+                                featurePoint!!,
+                                SpatialReference.webMercator()
+                            )
 
-            override fun onSensorChanged(event: SensorEvent?) {
-                // we receive the TYPE_ROTATION_VECTOR sensor type from the device
-                if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
-                    SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                    SensorManager.getOrientation(rotationMatrix, orientationAngles)
-
-                    // Get orientation angle
-                    var azimuth = Math.toDegrees(orientationAngles[0].toDouble())
-
-                        // project the WGS84 point to Web mercator point
-                        if (gpsPoint != null) {
-                            val projectedGPSPoint =
-                                GeometryEngine.projectOrNull(gpsPoint!!, SpatialReference.webMercator())
-
-                            if (features != null && clearButton.isEnabled) {
-                                graphicsOverlay.graphics.clear()
-                                val featurePoint =
-                                    features!![0].geometry?.let { extractMapLocation(it) }
-                                val projectedFeaturePoint = GeometryEngine.projectOrNull(
-                                    featurePoint!!,
-                                    SpatialReference.webMercator()
-                                )
-
-                                // create a polyline connecting the 2 points above
-
-//                            polyline = Polyline(listOf(projectedGPSPoint!!, projectedFeaturePoint!!))
-
-                                val polylineBuilder = PolylineBuilder(SpatialReference.webMercator()) {
-                                    addPoint(projectedGPSPoint!!)
-                                    addPoint(projectedFeaturePoint!!)
-                                }
-
-                                // distance in metres
-                                val distance = GeometryEngine.distanceOrNull(
-                                    projectedGPSPoint!!,
-                                    projectedFeaturePoint!!
-                                )
-                                println("distance = $distance")
-                                distanceTV.text = "Distance to the Destination: ${distance?.toInt()} m"
-
-                                // buffer around line 1/10 distance between 2 points
-                                if (distance != null) {
-                                    val lineBuffer =
-                                        GeometryEngine.bufferOrNull(polylineBuilder.toGeometry(), distance / 10)
-                                    if (azimuth <= 0) azimuth += 360.0
-                                    mapView.setViewpoint(Viewpoint(lineBuffer!!, azimuth))
-
-
-                                }
-                                // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
-                                graphicsOverlay.graphics.add(Graphic(polylineBuilder.toGeometry(), lineSymbol))
+                            val polylineBuilder = PolylineBuilder(SpatialReference.webMercator()) {
+                                addPoint(projectedGPSPoint!!)
+                                addPoint(projectedFeaturePoint!!)
                             }
+
+                            // distance in metres
+                            val distance = GeometryEngine.distanceOrNull(
+                                projectedGPSPoint!!,
+                                projectedFeaturePoint!!
+                            )
+                            println("distance = $distance")
+                            distanceTV.text = "Distance to the Destination: ${distance?.toInt()} m"
+
+                            // buffer around line 1/10 distance between 2 points
+                            if (distance != null) {
+                                lineBuffer =
+                                    GeometryEngine.bufferOrNull(
+                                        polylineBuilder.toGeometry(),
+                                        distance / 10
+                                    )
+                            }
+                            // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
+                            graphicsOverlay.graphics.add(
+                                Graphic(
+                                    polylineBuilder.toGeometry(),
+                                    lineSymbol
+                                )
+                            )
+                            mapExtent.isEnabled = true
                         }
+                    }
 
                 }
-
             }
         }
-
-        sensorManager.registerListener(sensorEventListener, sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR), SensorManager.SENSOR_DELAY_NORMAL)
 
         // navigate to the destination point
         navigateButton.setOnClickListener {
             // disable button
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
+            mapExtent.isEnabled = true
+        }
 
+        // wire up recenter button
+        recenterButton.setOnClickListener {
+            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+            recenterButton.isEnabled = false
+        }
+
+        // listen if user navigates the map view away from the
+        // location display, activate the recenter button
+        lifecycleScope.launch {
+            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
+                .collect { recenterButton.isEnabled = true }
+        }
+
+        mapExtent.setOnClickListener {
+            mapView.setViewpoint(Viewpoint(lineBuffer!!))
+            mapExtent.isEnabled = false
         }
 
         // navigate to the destination point
@@ -253,7 +266,7 @@ class MainActivity : AppCompatActivity() {
             graphicsOverlay.clearSelection()
             featureLayer.clearSelection()
             distanceTV.text = ""
-            mapView.setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
+            locationDisplay.defaultSymbol = defaultSymbol
         }
     }
 
@@ -358,15 +371,46 @@ class MainActivity : AppCompatActivity() {
         Snackbar.make(mapView, message, Snackbar.LENGTH_SHORT).show()
     }
 
-//    override fun onResume() {
-//        super.onResume()
-//        sensorManager.registerListener(sensorEventListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
-//        sensorManager.registerListener(sensorEventListener, magnetometer, SensorManager.SENSOR_DELAY_NORMAL)
-//    }
-//
-//    override fun onPause() {
-//        super.onPause()
-//        sensorManager.unregisterListener(sensorEventListener)
-//    }
+    /**
+     * Create a picture marker symbol to represent a pin at the tapped location
+     */
+    private fun createArrowSymbol(): PictureMarkerSymbol {
+        // get pin drawable
+        val arrowDrawable = ContextCompat.getDrawable(
+            this,
+            R.drawable.locationdisplaynavigationicon
+        )
+        //add a graphic for the tapped point
+        val arrowSymbol = PictureMarkerSymbol.createWithImage(
+            arrowDrawable as BitmapDrawable
+        )
+        arrowSymbol.apply {
+            // resize the dimensions of the symbol
+            width = 20f
+            height = 20f
+        }
+        return arrowSymbol
+    }
+
+    /**
+     * Create a picture marker symbol to represent a pin at the tapped location
+     */
+    private fun createDefaultSymbol(): PictureMarkerSymbol {
+        // get pin drawable
+        val defaultDrawable = ContextCompat.getDrawable(
+            this,
+            R.drawable.locationdisplaydefaulticon
+        )
+        //add a graphic for the tapped point
+        val defaultSymbol = PictureMarkerSymbol.createWithImage(
+            defaultDrawable as BitmapDrawable
+        )
+        defaultSymbol.apply {
+            // resize the dimensions of the symbol
+            width = 20f
+            height = 20f
+        }
+        return defaultSymbol
+    }
 }
 
