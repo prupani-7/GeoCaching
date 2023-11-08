@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val geocacheFS =
-        "https://services5.arcgis.com/N82JbI5EYtAkuUKU/arcgis/rest/services/geocaches_redlands/FeatureServer/0"
+        "https://services5.arcgis.com/N82JbI5EYtAkuUKU/arcgis/rest/services/LocateHiddenObjects/FeatureServer/0"
 
     // create a service feature table using the feature service URL
     private val serviceFeatureTable = ServiceFeatureTable(geocacheFS)
@@ -123,8 +123,8 @@ class MainActivity : AppCompatActivity() {
             map = geocacheMap
             // create graphics overlays to show the inputs and results of the spatial operation
             graphicsOverlays.add(graphicsOverlay)
-            // set an initial view point
-            setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
+            // set an initial view point - Esri
+            setViewpoint(Viewpoint(34.0539543, 117.2233470, 2000.0)) // Esri 117.2233470°W 34.0539543°N
         }
 
         // create a location display object
@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Register a SensorEventListener
-         val rotationMatrix = FloatArray(9)
+        val rotationMatrix = FloatArray(9)
         val orientationAngles = FloatArray(3)
         val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val sensorEventListener = object : SensorEventListener {
@@ -176,57 +176,58 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onSensorChanged(event: SensorEvent?) {
+                // we receive the TYPE_ROTATION_VECTOR sensor type from the device
                 if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
                     SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
                     SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-                    // Update the map's viewpoint here
+                    // Get orientation angle
                     var azimuth = Math.toDegrees(orientationAngles[0].toDouble())
 
-                    // project the WGS84 point to Web mercator point
-                    if (gpsPoint != null) {
-                        val projectedGPSPoint =
-                            GeometryEngine.projectOrNull(gpsPoint!!, SpatialReference.webMercator())
+                        // project the WGS84 point to Web mercator point
+                        if (gpsPoint != null) {
+                            val projectedGPSPoint =
+                                GeometryEngine.projectOrNull(gpsPoint!!, SpatialReference.webMercator())
 
-                        if (features != null && clearButton.isEnabled) {
-                            graphicsOverlay.graphics.clear()
-                            val featurePoint =
-                                features!![0].geometry?.let { extractMapLocation(it) }
-                            val projectedFeaturePoint = GeometryEngine.projectOrNull(
-                                featurePoint!!,
-                                SpatialReference.webMercator()
-                            )
+                            if (features != null && clearButton.isEnabled) {
+                                graphicsOverlay.graphics.clear()
+                                val featurePoint =
+                                    features!![0].geometry?.let { extractMapLocation(it) }
+                                val projectedFeaturePoint = GeometryEngine.projectOrNull(
+                                    featurePoint!!,
+                                    SpatialReference.webMercator()
+                                )
 
-                            // create a polyline connecting the 2 points above
+                                // create a polyline connecting the 2 points above
 
 //                            polyline = Polyline(listOf(projectedGPSPoint!!, projectedFeaturePoint!!))
 
-                            val polylineBuilder = PolylineBuilder(SpatialReference.webMercator()) {
-                                addPoint(projectedGPSPoint!!)
-                                addPoint(projectedFeaturePoint!!)
+                                val polylineBuilder = PolylineBuilder(SpatialReference.webMercator()) {
+                                    addPoint(projectedGPSPoint!!)
+                                    addPoint(projectedFeaturePoint!!)
+                                }
+
+                                // distance in metres
+                                val distance = GeometryEngine.distanceOrNull(
+                                    projectedGPSPoint!!,
+                                    projectedFeaturePoint!!
+                                )
+                                println("distance = $distance")
+                                distanceTV.text = "Distance to the Destination: ${distance?.toInt()} m"
+
+                                // buffer around line 1/10 distance between 2 points
+                                if (distance != null) {
+                                    val lineBuffer =
+                                        GeometryEngine.bufferOrNull(polylineBuilder.toGeometry(), distance / 10)
+                                    if (azimuth <= 0) azimuth += 360.0
+                                    mapView.setViewpoint(Viewpoint(lineBuffer!!, azimuth))
+
+
+                                }
+                                // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
+                                graphicsOverlay.graphics.add(Graphic(polylineBuilder.toGeometry(), lineSymbol))
                             }
-
-                            // distance in metres
-                            val distance = GeometryEngine.distanceOrNull(
-                                projectedGPSPoint!!,
-                                projectedFeaturePoint!!
-                            )
-                            println("distance = $distance")
-                            distanceTV.text = "Distance to the Destination: ${distance?.toInt()} m"
-
-                            // buffer around line 1/10 distance between 2 points
-                            if (distance != null) {
-                                val lineBuffer =
-                                    GeometryEngine.bufferOrNull(polylineBuilder.toGeometry(), distance / 10)
-                                if (azimuth <= 0) azimuth += 360.0
-                                mapView.setViewpoint(Viewpoint(lineBuffer!!, azimuth))
-
-
-                            }
-                            // create a Graphic using the polyline geometry and the lineSymbol and add it to the GraphicsOverlay
-                            graphicsOverlay.graphics.add(Graphic(polylineBuilder.toGeometry(), lineSymbol))
                         }
-                    }
 
                 }
 
@@ -241,19 +242,6 @@ class MainActivity : AppCompatActivity() {
             navigateButton.isEnabled = false
             clearButton.isEnabled = true
 
-        }
-
-        // wire up recenter button
-        recenterButton.setOnClickListener {
-            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-            recenterButton.isEnabled = false
-        }
-
-        // listen if user navigates the map view away from the
-        // location display, activate the recenter button
-        lifecycleScope.launch {
-            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
-                .collect { recenterButton.isEnabled = true }
         }
 
         // navigate to the destination point
