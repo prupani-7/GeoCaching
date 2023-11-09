@@ -267,6 +267,9 @@ class MainActivity : AppCompatActivity() {
             featureLayer.clearSelection()
             distanceTV.text = ""
             locationDisplay.defaultSymbol = defaultSymbol
+            mapView.setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
+            mapView.callout.dismiss()
+
         }
     }
 
