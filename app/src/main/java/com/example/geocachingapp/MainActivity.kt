@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val geocacheFS =
-        "https://services5.arcgis.com/N82JbI5EYtAkuUKU/arcgis/rest/services/geocaches_redlands/FeatureServer/0"
+        "https://services5.arcgis.com/N82JbI5EYtAkuUKU/arcgis/rest/services/LocateHiddenObjects/FeatureServer/0"
 
     // create a service feature table using the feature service URL
     private val serviceFeatureTable = ServiceFeatureTable(geocacheFS)
@@ -243,18 +243,18 @@ class MainActivity : AppCompatActivity() {
 
         }
 
-        // wire up recenter button
-        recenterButton.setOnClickListener {
-            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-            recenterButton.isEnabled = false
-        }
+//        // wire up recenter button
+//        recenterButton.setOnClickListener {
+//            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
+//            recenterButton.isEnabled = false
+//        }
 
         // listen if user navigates the map view away from the
         // location display, activate the recenter button
-        lifecycleScope.launch {
-            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
-                .collect { recenterButton.isEnabled = true }
-        }
+//        lifecycleScope.launch {
+//            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
+//                .collect { recenterButton.isEnabled = true }
+//        }
 
         // navigate to the destination point
         clearButton.setOnClickListener {
