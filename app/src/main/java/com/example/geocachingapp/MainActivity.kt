@@ -23,7 +23,6 @@ import com.arcgismaps.data.ServiceFeatureTable
 import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
 import com.arcgismaps.geometry.Point
-import com.arcgismaps.geometry.PointCollection
 import com.arcgismaps.geometry.Polyline
 import com.arcgismaps.geometry.PolylineBuilder
 import com.arcgismaps.geometry.SpatialReference
@@ -37,12 +36,9 @@ import com.arcgismaps.mapping.symbology.SimpleLineSymbolMarkerStyle
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
-import com.arcgismaps.mapping.view.LocationDisplay
 import com.arcgismaps.mapping.view.ScreenCoordinate
 import com.example.geocachingapp.databinding.ActivityMainBinding
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 
@@ -81,9 +77,6 @@ class MainActivity : AppCompatActivity() {
         activityMainBinding.navigateButton
     }
 
-    private val recenterButton: MaterialButton by lazy {
-        activityMainBinding.recenterButton
-    }
     private val clearButton: TextView by lazy {
         activityMainBinding.clearButton
     }
@@ -198,7 +191,6 @@ class MainActivity : AppCompatActivity() {
                             )
 
                             // create a polyline connecting the 2 points above
-
 //                            polyline = Polyline(listOf(projectedGPSPoint!!, projectedFeaturePoint!!))
 
                             val polylineBuilder = PolylineBuilder(SpatialReference.webMercator()) {
@@ -243,19 +235,6 @@ class MainActivity : AppCompatActivity() {
 
         }
 
-//        // wire up recenter button
-//        recenterButton.setOnClickListener {
-//            mapView.locationDisplay.setAutoPanMode(LocationDisplayAutoPanMode.Navigation)
-//            recenterButton.isEnabled = false
-//        }
-
-        // listen if user navigates the map view away from the
-        // location display, activate the recenter button
-//        lifecycleScope.launch {
-//            locationDisplay.autoPanMode.filter { it == LocationDisplayAutoPanMode.Off }
-//                .collect { recenterButton.isEnabled = true }
-//        }
-
         // navigate to the destination point
         clearButton.setOnClickListener {
             // disable button
@@ -266,6 +245,7 @@ class MainActivity : AppCompatActivity() {
             featureLayer.clearSelection()
             distanceTV.text = ""
             mapView.setViewpoint(Viewpoint(34.053694, -117.222774, 4000.0))
+            mapView.callout.dismiss()
         }
     }
 
@@ -370,15 +350,5 @@ class MainActivity : AppCompatActivity() {
         Snackbar.make(mapView, message, Snackbar.LENGTH_SHORT).show()
     }
 
-//    override fun onResume() {
-//        super.onResume()
-//        sensorManager.registerListener(sensorEventListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
-//        sensorManager.registerListener(sensorEventListener, magnetometer, SensorManager.SENSOR_DELAY_NORMAL)
-//    }
-//
-//    override fun onPause() {
-//        super.onPause()
-//        sensorManager.unregisterListener(sensorEventListener)
-//    }
 }
 
