@@ -1,13 +1,8 @@
 package com.example.geocachingapp
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.BitmapDrawable
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
@@ -21,16 +16,10 @@ import com.arcgismaps.ArcGISEnvironment
 import com.arcgismaps.Color
 import com.arcgismaps.data.Feature
 import com.arcgismaps.data.ServiceFeatureTable
-import com.arcgismaps.geometry.Envelope
-import com.arcgismaps.geometry.GeodeticCurveType
-import com.arcgismaps.geometry.GeodeticDistanceResult
 import com.arcgismaps.geometry.Geometry
 import com.arcgismaps.geometry.GeometryEngine
-import com.arcgismaps.geometry.LinearUnit
-import com.arcgismaps.geometry.LinearUnitId
 import com.arcgismaps.geometry.Point
 import com.arcgismaps.geometry.Polygon
-import com.arcgismaps.geometry.Polyline
 import com.arcgismaps.geometry.PolylineBuilder
 import com.arcgismaps.geometry.SpatialReference
 import com.arcgismaps.location.LocationDisplayAutoPanMode
@@ -38,14 +27,10 @@ import com.arcgismaps.mapping.ArcGISMap
 import com.arcgismaps.mapping.BasemapStyle
 import com.arcgismaps.mapping.Viewpoint
 import com.arcgismaps.mapping.layers.FeatureLayer
-import com.arcgismaps.mapping.symbology.FontWeight
-import com.arcgismaps.mapping.symbology.HorizontalAlignment
 import com.arcgismaps.mapping.symbology.PictureMarkerSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbol
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolMarkerStyle
 import com.arcgismaps.mapping.symbology.SimpleLineSymbolStyle
-import com.arcgismaps.mapping.symbology.TextSymbol
-import com.arcgismaps.mapping.symbology.VerticalAlignment
 import com.arcgismaps.mapping.view.Graphic
 import com.arcgismaps.mapping.view.GraphicsOverlay
 import com.arcgismaps.mapping.view.ScreenCoordinate
