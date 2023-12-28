@@ -290,45 +290,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractMapLocation(geometry: Geometry): Point {
         val mapViewSpatialReference = mapView.spatialReference.value
-        val featureGeometry =
-            GeometryEngine.projectOrNull(geometry, mapViewSpatialReference!!) as Point
-        return featureGeometry
+        return GeometryEngine.projectOrNull(geometry, mapViewSpatialReference!!) as Point
     }
 
     /**
      * Request fine and coarse location permissions for API level 23+.
      */
     private fun requestPermissions() {
-        // coarse location permission
-        val permissionCheckCoarseLocation =
-            ContextCompat.checkSelfPermission(
-                this@MainActivity,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) ==
-                    PackageManager.PERMISSION_GRANTED
-        // fine location permission
+        // check if fine location permission is granted
         val permissionCheckFineLocation =
             ContextCompat.checkSelfPermission(
                 this@MainActivity,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) ==
-                    PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
 
         // if permissions are not already granted, request permission from the user
-        if (!(permissionCheckCoarseLocation && permissionCheckFineLocation)) {
+        if (!(permissionCheckFineLocation)) {
             ActivityCompat.requestPermissions(
                 this@MainActivity,
-                arrayOf(
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                 2
             )
-        } else {
-            // permission already granted, so start the location display
-            lifecycleScope.launch {
-                mapView.locationDisplay.dataSource.start()
-            }
         }
     }
 
@@ -357,27 +339,6 @@ class MainActivity : AppCompatActivity() {
     private fun showError(message: String) {
         Log.e(localClassName, message)
         Snackbar.make(mapView, message, Snackbar.LENGTH_SHORT).show()
-    }
-
-    /**
-     * Create a picture marker symbol to represent a pin at the tapped location
-     */
-    private fun createArrowSymbol(): PictureMarkerSymbol {
-        // get pin drawable
-        val arrowDrawable = ContextCompat.getDrawable(
-            this,
-            R.drawable.locationdisplaynavigationicon
-        )
-        //add a graphic for the tapped point
-        val arrowSymbol = PictureMarkerSymbol.createWithImage(
-            arrowDrawable as BitmapDrawable
-        )
-        arrowSymbol.apply {
-            // resize the dimensions of the symbol
-            width = 20f
-            height = 20f
-        }
-        return arrowSymbol
     }
 
     /**
